@@ -1,0 +1,123 @@
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+import seaborn as sns
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from datetime import datetime
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import LabelEncoder, PolynomialFeatures
+from sklearn.model_selection import train_test_split,cross_val_score
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier,GradientBoostingClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report,confusion_matrix
+import warnings
+warnings.filterwarnings('ignore')
+comp=pd.read_csv("Company.csv")
+comp_tw=pd.read_csv("Company_Tweet.csv")
+tw=pd.read_csv("Tweet.csv")
+comp.head()
+comp.shape
+comp_tw.head()
+comp_tw.shape
+tw.head()
+tw.shape
+dic=pd.Series(comp.company_name.values,index=comp.ticker_symbol).to_dict()
+comp_tw.ticker_symbol=comp_tw.ticker_symbol.map(dic)
+dic2=pd.Series(comp_tw.ticker_symbol.values,index=comp_tw.tweet_id).to_dict()
+tw.tweet_id=tw.tweet_id.map(dic2)
+tw.rename(columns={"tweet_id":"company_name"},inplace=True)
+stop_words=stopwords.words('english')
+def remove_stopwords(txt):
+    words=word_tokenize(txt)
+    words=[w for w in words if w.isalpha()]
+    words=[w for w in words if not w in stop_words]
+    return ' '.join(words)
+
+tw.body = tw["body"].apply(remove_stopwords)
+import nltk
+nltk.download('vader_lexicon')
+sia=SentimentIntensityAnalyzer()
+
+dict_sent=tw["body"].apply(lambda z:sia.polarity_scores((z)))
+print(dict_sent)
+positive=[]
+negative=[]
+neutral=[]
+sentiment=[]
+compound=[]
+for w in dict_sent:
+    positive.append(w['pos'])
+    negative.append(w['neg'])
+    neutral.append(w['neu'])
+    compound.append(w["compound"])
+    if (w['compound']>0.05):
+        sentiment.append("positive")
+    elif (w['compound']<-0.05):
+        sentiment.append("negative")
+    else:
+        sentiment.append("neutral")
+dic3={"positive":positive,"negative":negative,"neutral":neutral,"compound":compound,"sentiment":sentiment}
+data2=pd.DataFrame(dic3)
+data3=[tw,data2]
+data=pd.concat(data3,axis=1)
+data.isnull().sum()
+data.post_date=data.post_date.apply(lambda z:datetime.fromtimestamp(z))
+print(data["post_date"])
+data.post_date=pd.to_datetime(data.post_date)
+data=data.assign(day=data.post_date.dt.day,month=data.post_date.dt.month,year=data.post_date.dt.year)
+data.drop("post_date",axis=1,inplace=True)
+data.year.value_counts(
+data.company_name.value_counts().plot(kind="pie",autopct="%1.0f%%")
+data.year.value_counts().plot(kind="pie",autopct="%1.0f%%")
+x,y="company_name","sentiment"
+df1 = data.groupby(x)[y].value_counts(normalize=True)
+df1 = df1.mul(100)
+df1 = df1.rename('percent').reset_index()
+
+g = sns.catplot(x=x,y='percent',hue=y,kind='bar',data=df1)
+g.ax.set_ylim(0,100)
+data["rating"]=round(data["compound"]*2+3)
+
+data.rating.value_counts()
+data.dtypes
+print(round(data.groupby("company_name",as_index=False)["rating"].mean(),1))
+data["rating"]=data.rating.astype("category")
+data.dtypes
+author=data.groupby(["writer"]).sum().nsmallest(10,"compound").reset_index().writer
+print(author)
+company=[]
+for w in author:
+    company.append(data.loc[data['writer'] == w, 'company_name'].iloc[0])
+troll=pd.DataFrame(list(zip(author,company)),columns=['author','company'])
+sns.countplot(x="company",data=troll).set_title("Companies trolled by authors")
+plt.show()
+data.drop(["writer","body","day","month","year"],axis=1,inplace=True)
+le_comp=LabelEncoder()
+le_sent=LabelEncoder()
+
+data["company_name"]=le_comp.fit_transform(data["company_name"])
+data["sentiment"]=le_sent.fit_transform(data["sentiment"])
+y=data["rating"]
+x=data.drop("rating",axis=1)
+x=x.values
+#x=PolynomialFeatures(degree=2, include_bias=False).fit_transform(x)
+x_train,x_test,y_train,y_test=train_test_split(x,y,test_size=0.2,random_state=0)
+data["rating"].value_counts()
+
+model = DecisionTreeClassifier(random_state=0)
+model.fit(x_train, y_train)
+predictions = model.predict(x_test)
+print(classification_report(y_test, predictions))
+print(confusion_matrix(y_test, predictions))
+model=RandomForestClassifier(n_estimators=5)
+model.fit(x_train, y_train)
+predictions = model.predict(x_test)
+print(classification_report(y_test, predictions))
+print(confusion_matrix(y_test, predictions)
+model=GradientBoostingClassifier(n_estimators=5)
+model.fit(x_train, y_train)
+predictions = model.predict(x_test)
+print(classification_report(y_test, predictions))
+print(confusion_matrix(y_test, predictions))
